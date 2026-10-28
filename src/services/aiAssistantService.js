@@ -278,6 +278,22 @@ function checkCooldown() {
 // ─── Public API ───────────────────────────────────────────────────────────────
 
 /**
+ * Checks if DeepSeek backend proxy is configured with an API key.
+ * @returns {Promise<{ configured: boolean, provider: string }>}
+ */
+export async function checkAiStatus() {
+  try {
+    const res = await fetch('/api/ai/status');
+    if (res.ok) {
+      return await res.json();
+    }
+  } catch {
+    // ignore
+  }
+  return { configured: false, provider: 'mock' };
+}
+
+/**
  * Ask the AI Kos Decision Assistant a question.
  *
  * @param {object} payload
@@ -300,55 +316,68 @@ export async function askAssistant({ question, primaryKos, compareKos = null, pr
 
   checkCooldown();
 
-  if (AI_IS_MOCK) {
-    // ─── [DEVELOPMENT / DEMO MODE] ────────────────────────────────────────────
-    // Responses below are GENERATED FROM REAL DATA, not from an AI model.
-    // To connect a real AI provider, configure your backend endpoint and
-    // set AI_IS_MOCK = false. See service contract above for backend shape.
-    await new Promise((resolve) => setTimeout(resolve, MOCK_DELAY_MS));
-    return generateMockResponse(question, primaryKos, compareKos, profile);
-    // ─────────────────────────────────────────────────────────────────────────
+  // Try calling the Vite dev server /api/ai/kos-assistant middleware (DeepSeek proxy)
+  if (typeof window !== 'undefined') {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 25000);
+
+    try {
+      const res = await fetch('/api/ai/kos-assistant', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          question: question.trim().slice(0, MAX_QUESTION_CHARS),
+          primaryKos: sanitizeKos(primaryKos),
+          compareKos: compareKos ? sanitizeKos(compareKos) : null,
+          profile: sanitizeProfile(profile),
+        }),
+        signal: controller.signal,
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        return data;
+      }
+
+      const errData = await res.json().catch(() => ({}));
+      if (errData.code === 'API_KEY_MISSING') {
+        throw new Error(
+          'API Key belum disetel di file .env.local (ROUTER_API_KEY). Tambahkan ROUTER_API_KEY=sk-... di file .env.local.'
+        );
+      }
+      if (errData.error) {
+        throw new Error(errData.error);
+      }
+      throw new Error(`Server error ${res.status}`);
+    } catch (err) {
+      if (err.name === 'AbortError') {
+        throw new Error('Permintaan ke 9Router timeout (>25 detik). Silakan coba lagi.', { cause: err });
+      }
+      // Re-throw specific errors (API key missing, rate limit, quota, connection)
+      if (
+        err.message.includes('API Key') ||
+        err.message.includes('ROUTER') ||
+        err.message.includes('9Router') ||
+        err.message.includes('Limit kuota') ||
+        err.message.includes('tidak valid') ||
+        err.message.includes('Gagal terhubung')
+      ) {
+        throw err;
+      }
+      // If endpoint not reachable or network issue, fallback to mock in dev
+      console.warn('[AI Assistant] Gagal memanggil endpoint 9Router, beralih ke mode lokal:', err.message);
+      await new Promise((resolve) => setTimeout(resolve, MOCK_DELAY_MS));
+      return generateMockResponse(question, primaryKos, compareKos, profile);
+    } finally {
+      clearTimeout(timeoutId);
+    }
   }
 
-  // ─── REAL BACKEND (when AI_IS_MOCK = false) ───────────────────────────────
-  const backendUrl = import.meta.env.VITE_AI_BACKEND_URL;
-  if (!backendUrl) {
-    throw new Error('Endpoint AI backend belum dikonfigurasi. Hubungi administrator.');
-  }
-
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 15000);
-
-  try {
-    const res = await fetch(`${backendUrl}/ai/kos-assistant`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        question: question.trim().slice(0, MAX_QUESTION_CHARS),
-        primaryKos: sanitizeKos(primaryKos),
-        compareKos: compareKos ? sanitizeKos(compareKos) : null,
-        profile: sanitizeProfile(profile),
-      }),
-      signal: controller.signal,
-    });
-
-    if (!res.ok) {
-      const text = await res.text().catch(() => '');
-      if (res.status === 429) throw new Error('Terlalu banyak permintaan. Coba lagi dalam beberapa saat.');
-      throw new Error(`Server error ${res.status}${text ? `: ${text}` : '.'}`);
-    }
-
-    const data = await res.json();
-    if (typeof data !== 'object' || data === null) {
-      throw new Error('Respons dari server tidak valid.');
-    }
-    return data;
-  } catch (err) {
-    if (err.name === 'AbortError') {
-      throw new Error('Permintaan timeout (>15 detik). Coba lagi.');
-    }
-    throw err;
-  } finally {
-    clearTimeout(timeoutId);
-  }
+  // Node.js test environment fallback
+  await new Promise((resolve) => setTimeout(resolve, 10));
+  return generateMockResponse(question, primaryKos, compareKos, profile);
 }
+
+// ─── Exported for testing ─────────────────────────────────────────────────────
+export { sanitizeProfile, sanitizeKos, generateMockResponse };
+

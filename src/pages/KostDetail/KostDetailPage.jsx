@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useMemo } from 'react';
-import { useParams, Link, useNavigate } from 'react-router-dom';
+import { useParams, Link } from 'react-router-dom';
 import {
   MapPin,
   Star,
@@ -33,7 +33,6 @@ import { matchPropertyToProfile } from '../../utils/matching';
 
 export default function KostDetailPage() {
   const { slug } = useParams();
-  const navigate = useNavigate();
 
   const [property, setProperty] = useState(null);
   const [similarProperties, setSimilarProperties] = useState([]);
@@ -42,7 +41,7 @@ export default function KostDetailPage() {
   const [assistantOpen, setAssistantOpen] = useState(false);
   const [allProperties, setAllProperties] = useState([]);
 
-  const { isSaved, toggleSave } = useSavedKost();
+  const { isSaved, toggleSave, savedIds } = useSavedKost();
   const { profile, getMatchForProperty } = useStudentProfile();
 
   useEffect(() => {
@@ -74,6 +73,40 @@ export default function KostDetailPage() {
     loadPropertyData();
   }, [slug]);
 
+  // ── Derived state (all hooks must precede early returns) ──
+  const saved = isSaved(property?.id);
+
+  const matchInfo = useMemo(() => {
+    if (!profile || !property) return null;
+    return getMatchForProperty(property);
+  }, [profile, property, getMatchForProperty]);
+
+  const primaryKos = useMemo(() => {
+    if (!property) return null;
+    return {
+      property,
+      matchScore: matchInfo?.score ?? null,
+      matchReasons: matchInfo?.reasons ?? [],
+      matchTradeoffs: matchInfo?.tradeoffs ?? [],
+    };
+  }, [property, matchInfo]);
+
+  const compareKos = useMemo(() => {
+    if (!savedIds?.length || !allProperties.length || !property) return null;
+    const otherId = savedIds.find((id) => String(id) !== String(property.id));
+    if (!otherId) return null;
+    const otherProp = allProperties.find((p) => String(p.id) === String(otherId));
+    if (!otherProp) return null;
+    const prefs = profile?.preferences || profile || {};
+    const otherMatch = matchPropertyToProfile(otherProp, prefs);
+    return {
+      property: otherProp,
+      matchScore: otherMatch.score,
+      matchReasons: otherMatch.reasons,
+      matchTradeoffs: otherMatch.tradeoffs,
+    };
+  }, [savedIds, allProperties, property, profile]);
+
   if (loading) {
     return (
       <div className="max-w-7xl mx-auto px-4 py-12 space-y-6">
@@ -100,34 +133,6 @@ export default function KostDetailPage() {
       </div>
     );
   }
-
-  const saved = isSaved(property.id);
-  const matchInfo = profile ? getMatchForProperty(property) : null;
-
-  // Build primaryKos context for assistant
-  const primaryKos = useMemo(() => ({
-    property,
-    matchScore: matchInfo?.score ?? null,
-    matchReasons: matchInfo?.reasons ?? [],
-    matchTradeoffs: matchInfo?.tradeoffs ?? [],
-  }), [property, matchInfo]);
-
-  // Build compareKos from any other saved property (first one that's not current)
-  const compareKos = useMemo(() => {
-    if (!savedIds?.length || allProperties.length === 0) return null;
-    const otherId = savedIds.find((id) => String(id) !== String(property.id));
-    if (!otherId) return null;
-    const otherProp = allProperties.find((p) => String(p.id) === String(otherId));
-    if (!otherProp) return null;
-    const prefs = profile?.preferences || profile || {};
-    const otherMatch = matchPropertyToProfile(otherProp, prefs);
-    return {
-      property: otherProp,
-      matchScore: otherMatch.score,
-      matchReasons: otherMatch.reasons,
-      matchTradeoffs: otherMatch.tradeoffs,
-    };
-  }, [savedIds, allProperties, property.id, profile]);
 
   const handleShare = () => {
     navigator.clipboard?.writeText(window.location.href);

@@ -1,11 +1,12 @@
 import React, { useEffect, useState, useMemo } from 'react';
 import { Link } from 'react-router-dom';
-import { Columns3, Home, Bookmark, ArrowLeft } from 'lucide-react';
+import { Columns3, Home, Bookmark, ArrowLeft, BotMessageSquare } from 'lucide-react';
 import SEO from '../../components/common/SEO';
 import ComparisonHeader from '../../components/comparison/ComparisonHeader';
 import ComparisonTable from '../../components/comparison/ComparisonTable';
 import ComparisonSummary from '../../components/comparison/ComparisonSummary';
 import ComparisonEmptyState from '../../components/comparison/ComparisonEmptyState';
+import KosAssistantPanel from '../../components/ai/KosAssistantPanel';
 import { usePropertyComparison } from '../../hooks/usePropertyComparison';
 import { useSavedKost } from '../../context/SavedKostContext';
 import { useStudentProfile } from '../../context/StudentProfileContext';
@@ -30,6 +31,7 @@ export default function ComparePage() {
   const [comparedProperties, setComparedProperties] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showDifferencesOnly, setShowDifferencesOnly] = useState(false);
+  const [assistantOpen, setAssistantOpen] = useState(false);
 
   // Load properties based on comparison IDs
   useEffect(() => {
@@ -101,6 +103,21 @@ export default function ComparePage() {
     return list;
   }, [profile]);
 
+  // Build assistant context from first two compared properties
+  const assistantPrimaryKos = useMemo(() => {
+    const p = comparedProperties[0];
+    if (!p) return null;
+    const s = matchScores[p.id];
+    return { property: p, matchScore: s?.score ?? null, matchReasons: s?.reasons ?? [], matchTradeoffs: s?.tradeoffs ?? [] };
+  }, [comparedProperties, matchScores]);
+
+  const assistantCompareKos = useMemo(() => {
+    const p = comparedProperties[1];
+    if (!p) return null;
+    const s = matchScores[p.id];
+    return { property: p, matchScore: s?.score ?? null, matchReasons: s?.reasons ?? [], matchTradeoffs: s?.tradeoffs ?? [] };
+  }, [comparedProperties, matchScores]);
+
   return (
     <>
       <SEO
@@ -145,6 +162,16 @@ export default function ComparePage() {
               <Bookmark className="w-3.5 h-3.5" />
               <span>Kembali ke Kos Tersimpan</span>
             </Link>
+            {comparedProperties.length >= 2 && (
+              <button
+                id="btn-compare-ai-assistant"
+                onClick={() => setAssistantOpen(true)}
+                className="px-4 py-2 bg-[#EAF4EF] hover:bg-[#2D5A47] border border-[#2D5A47]/30 text-[#2D5A47] hover:text-white text-xs font-bold rounded-xl flex items-center gap-1.5 transition-all"
+              >
+                <BotMessageSquare className="w-3.5 h-3.5" />
+                <span>Tanya AI</span>
+              </button>
+            )}
           </div>
         </div>
 
@@ -181,6 +208,17 @@ export default function ComparePage() {
           </div>
         )}
       </div>
+
+      {/* AI Kos Decision Assistant — comparison context */}
+      {assistantPrimaryKos && (
+        <KosAssistantPanel
+          isOpen={assistantOpen}
+          onClose={() => setAssistantOpen(false)}
+          primaryKos={assistantPrimaryKos}
+          compareKos={assistantCompareKos}
+          profile={profile}
+        />
+      )}
     </>
   );
 }

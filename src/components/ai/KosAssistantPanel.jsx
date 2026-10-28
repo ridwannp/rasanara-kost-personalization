@@ -1,8 +1,8 @@
-import React, { useState, useRef, useCallback } from 'react';
-import { X, BotMessageSquare, Send, RotateCcw, AlertCircle, FlaskConical } from 'lucide-react';
-import { askAssistant, AI_IS_MOCK } from '../../services/aiAssistantService';
+import React, { useState, useRef, useCallback, useEffect } from 'react';
+import { X, BotMessageSquare, Send, RotateCcw, AlertCircle, FlaskConical, Sparkles } from 'lucide-react';
+import { askAssistant, checkAiStatus } from '../../services/aiAssistantService';
 import AssistantMessage from './AssistantMessage';
-
+import { AI_IS_MOCK } from '../../services/aiAssistantService';
 // ─── Suggested questions ──────────────────────────────────────────────────────
 
 const BASE_QUESTIONS = [
@@ -22,12 +22,24 @@ const COMPARE_QUESTION = {
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
 
-function MockBadge() {
+function ProviderBadge({ configured, provider, model }) {
+  if (configured && (provider === '9router' || provider === 'deepseek')) {
+    return (
+      <span
+        title={`Terhubung ke 9Router AI Gateway (${model || 'OpenAI Compatible'})`}
+        className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-violet-50 border border-violet-200 text-[10px] font-semibold text-violet-700 select-none shadow-2xs"
+      >
+        <Sparkles className="w-3 h-3 text-violet-600 animate-pulse" />
+        9Router AI
+      </span>
+    );
+  }
+
   return (
     <span
-      title="Fitur ini menggunakan data kos nyata, tetapi bukan AI model sungguhan. Hubungkan backend AI untuk produksi."
+      title="Mode Demo (data matching engine nyata). Konfigurasi ROUTER_API_KEY di .env.local untuk mengaktifkan 9Router."
       className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-amber-50 border border-amber-200 text-[10px] font-semibold text-amber-700 cursor-help select-none"
-      aria-label="Mode demo — bukan AI sungguhan"
+      aria-label="Mode demo"
     >
       <FlaskConical className="w-3 h-3" />
       Demo
@@ -89,6 +101,14 @@ export default function KosAssistantPanel({
   const [lastQuestion, setLastQuestion] = useState('');
   const inFlightRef = useRef(false);
   const textareaRef = useRef(null);
+
+  const [aiProvider, setAiProvider] = useState({ configured: false, provider: 'mock' });
+
+  useEffect(() => {
+    if (isOpen) {
+      checkAiStatus().then(setAiProvider).catch(() => { });
+    }
+  }, [isOpen]);
 
   const hasCompareData = Boolean(compareKos?.property);
 
@@ -188,7 +208,11 @@ export default function KosAssistantPanel({
             <div>
               <div className="flex items-center gap-2">
                 <span className="text-sm font-bold text-slate-900">AI Kos Assistant</span>
-                {AI_IS_MOCK && <MockBadge />}
+                <ProviderBadge
+                  configured={aiProvider.configured}
+                  provider={aiProvider.provider}
+                  model={aiProvider.model}
+                />
               </div>
               <p className="text-[11px] text-slate-400 leading-none mt-0.5">
                 {primaryKos?.property?.name ?? 'Kos'}

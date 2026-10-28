@@ -127,6 +127,14 @@ export default function AssistantMessage({ response }) {
           <p className="text-[11px] text-slate-400 leading-relaxed">{disclaimer}</p>
         </div>
       )}
+
+      {/* AI Provider attribution */}
+      {(response.provider === '9router' || response.provider === 'deepseek') && (
+        <div className="flex items-center justify-end gap-1.5 pt-1 text-[10px] text-violet-700 font-medium">
+          <Sparkles className="w-3 h-3 text-violet-500" />
+          <span>Dianalisis melalui 9Router AI Gateway</span>
+        </div>
+      )}
     </div>
   );
 }
